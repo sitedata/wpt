@@ -165,7 +165,7 @@
         assert_equals(touch.clientY, touch.pageY - window.pageYOffset, "touch.clientY is touch.pageY - window.pageYOffset.");
     }
 
-    function run() {
+    async function run() {
         var target0 = document.getElementById("target0");
         var target1 = document.getElementById("target1");
 
@@ -178,7 +178,6 @@
         var touchmove_received = false;
         var touchend_received = false;
         var invalid_touchmove_received = false;
-        var actions_promise;
 
         on_event(target0, "touchstart", function onTouchStart(ev) {
             ev.preventDefault();
@@ -249,7 +248,7 @@
             }
         });
 
-        actions_promise = new test_driver.Actions()
+        await new test_driver.Actions()
           .addPointer("touchPointer1", "touch")
           .addPointer("touchPointer2", "touch")
           .pointerMove(0, 0, {origin: target0, sourceName: "touchPointer1"})
