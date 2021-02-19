@@ -1,0 +1,114 @@
+<!doctype html>
+<html>
+
+<head>
+  <title>MediaStreamTrackProcessor</title>
+  <link rel="help" href="https://w3c.github.io/mediacapture-insertable-streams">
+</head>
+
+<body>
+  <p class="instructions">When prompted, accept to give permission to use your audio and video devices.</p>
+  <h1 class="instructions">Description</h1>
+  <p class="instructions">This test checks processing captured MediaStreams works as expected.</p>
+  <script src=/resources/testharness.js></script>
+  <script src=/resources/testharnessreport.js></script>
+  <script>
+    function makeVideoFrame(timestamp) {
+      const height = 10;
+      const width = 10;
+      let canvas = new OffscreenCanvas(width, height);
+
+      let ctx = canvas.getContext('2d');
+      ctx.fillStyle = 'rgba(50, 100, 150, 255)';
+      ctx.fillRect(0, 0, width, height);
+
+      return new VideoFrame(canvas.transferToImageBitmap(), { timestamp });
+    }
+
+    promise_test(async t => {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 320 } });
+      assert_equals(stream.getVideoTracks().length, 1);
+      let videoTrack = stream.getVideoTracks()[0];
+
+      return new Promise((resolve, reject) => {
+        const writableStream = new WritableStream({
+          write(videoFrame) {
+            assert_true(videoFrame instanceof VideoFrame);
+            assert_equals(videoFrame.codedWidth, 320);
+            assert_not_equals(videoFrame.timestamp, null);
+            resolve();
+          },
+          close() {
+            fail("Closed");
+          },
+          abort(err) {
+            fail("Sink error:", err);
+          }
+        });
+        let videoTrackProcessor = new MediaStreamTrackProcessor(videoTrack);
+        videoTrackProcessor.readable.pipeTo(writableStream);
+      });
+    }, "Tests that creating a Video MediaStreamTrackProcessor works as expected");
+
+    promise_test(async t => {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      assert_equals(stream.getAudioTracks().length, 1);
+      let audioTrack = stream.getAudioTracks()[0];
+
+      return new Promise((resolve, reject) => {
+        const writableStream = new WritableStream({
+          write(audioFrame) {
+            assert_true(audioFrame instanceof AudioFrame);
+            assert_not_equals(audioFrame.timestamp, null);
+            resolve();
+          },
+          close() {
+            fail("Closed");
+          },
+          abort(err) {
+            fail("Sink error:", err);
+          }
+        });
+        let audioTrackProcessor = new MediaStreamTrackProcessor(audioTrack);
+        audioTrackProcessor.readable.pipeTo(writableStream);
+      });
+    }, "Tests that creating a Audio MediaStreamTrackProcessor works as expected");
+
+    promise_test(async t => {
+      let iAmNotATrack = "notatrack";
+      assert_throws_js(TypeError, () => { new MediaStreamTrackProcessor(iAmNotATrack) });
+    }, "Test construction of a MediaStreamTrackProcessor with an invalid track throws.");
+
+    promise_test(async t => {
+      const bufferSize = 3;
+      const framesToSend = 10;
+
+      let generatedTrack = new MediaStreamTrackGenerator("video");
+      let frameWriter = generatedTrack.writable.getWriter();
+
+      let trackProcessor = new MediaStreamTrackProcessor(generatedTrack, bufferSize);
+
+
+      let reader = trackProcessor.readable.getReader();
+
+      // Enqueue many frames one after the other.
+      await frameWriter.ready;
+      for (let i = 0; i < framesToSend; i++) {
+        await frameWriter.write(makeVideoFrame(i))
+      }
+
+      // Our reader should only be provided with the |bufferSize| latest frames.
+      let framesSeen = 0;
+      for (let i = 0; i < bufferSize; i++) {
+        let videoFrame = (await reader.read()).value;
+        t.step(() => {
+          assert_true(videoFrame instanceof VideoFrame, "Invalid type of videoFrame");
+          assert_greater_than(videoFrame.timestamp, framesToSend - bufferSize, "Received buffered frame which should have been dropped");
+        });
+      }
+      return Promise.resolve();
+    }, "Tests that only the maxBufferSize most recent frames are stored");
+  </script>
+</body>
+
+</html>
